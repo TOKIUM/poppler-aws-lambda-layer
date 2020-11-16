@@ -1,15 +1,13 @@
 # Poppler AWS Lambda Layer
 Build and publish an AWS Lambda Layer which provides poppler's command line tools.
 
-Currently, only the options that is required to run `pdfinfo` is enabled to build poppler.
-
 ## Requirements
 - Docker
 - Linux
 - Node
 
 ## Release
-The layer called `poppler-aws-lambda-layer` will be published with [Serverless Framewok](https://www.serverless.com/).
+A layer called `poppler-aws-lambda-layer` will be published with [Serverless Framewok](https://www.serverless.com/).
 
 ```sh
 npm install

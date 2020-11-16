@@ -1,4 +1,4 @@
-service: poppler
+service: poppler-service
 
 provider:
   name: aws
