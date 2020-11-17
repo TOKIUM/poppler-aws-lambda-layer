@@ -10,5 +10,7 @@ layers:
     path: build
     name: poppler-aws-lambda-layer
     description: Poppler v20.10.0
+    licenseInfo: GPL-2.0-or-later
+    retain: true
     package:
       artifact: build/artifacts.zip
