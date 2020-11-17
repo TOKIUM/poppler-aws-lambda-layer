@@ -8,17 +8,42 @@ RUN mkdir -p $WORK_DIR
 
 WORKDIR $WORK_DIR
 
+# Curl
+ENV CURL_VERSION 7.73.0
+ENV CURL_SOURCE curl-${CURL_VERSION}.tar.xz
+ENV CURL_MD5 d7df02d3b78b625fee4dd765808a6eb6
+
+RUN yum install -y openssl-devel && \
+  curl -LO https://curl.haxx.se/download/${CURL_SOURCE} && \
+  (test "$(md5sum ${CURL_SOURCE})" = "${CURL_MD5}  ${CURL_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
+  tar xf ${CURL_SOURCE} && \
+  cd curl* && \
+  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
+    CPPFLAGS=-I${TARGET_DIR}/include \
+    LDFLAGS=-L$(TARGET_DIR)/lib \
+    --enable-threaded-resolver \
+    --disable-static \
+    --disable-docs \
+    --prefix=${TARGET_DIR} \
+    --exec-prefix=${LOCAL_DIR} \
+    --libdir=${TARGET_DIR}/lib \
+    --mandir=${LOCAL_DIR}/share/man && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -rf curl*
+
 # CMake
-ENV CMAKE_SOURCE cmake-3.18.2.tar.gz
+ENV CMAKE_VERSION 3.18.2
+ENV CMAKE_SOURCE cmake-${CMAKE_VERSION}.tar.gz
 ENV CMAKE_MD5 7a882b3764f42981705286ac9daa29c2
 
-RUN yum install -y openssl-devel libcurl-devel && \
-  curl -LO https://cmake.org/files/v3.18/${CMAKE_SOURCE} && \
+RUN curl -LO https://cmake.org/files/v3.18/${CMAKE_SOURCE} && \
   (test "$(md5sum ${CMAKE_SOURCE})" = "${CMAKE_MD5}  ${CMAKE_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
   tar xf ${CMAKE_SOURCE} && \
   cd cmake* && \
   sed -i '/"lib64"/s/64//' Modules/GNUInstallDirs.cmake && \
-  ./bootstrap --prefix=${LOCAL_DIR} && \
+  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./bootstrap --prefix=${LOCAL_DIR} && \
   make && \
   make install && \
   cd .. && \
@@ -276,7 +301,8 @@ RUN curl -LO https://poppler.freedesktop.org/${POPPLER_SOURCE} && \
   cd build && \
   PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig:$PKG_CONFIG_PATH cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=${TARGET_DIR}  \
+    -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
+    -DCMAKE_INSTALL_DOCDIR=${LOCAL_DIR}/doc/poppler \
     -DTESTDATADIR=testdata \
     -DENABLE_UNSTABLE_API_ABI_HEADERS:bool=on \
     -DENABLE_QT5:bool=off \
