@@ -6,7 +6,7 @@
   "description": "AWS Lambda layer to provide Poppler command line tools",
   "scripts": {
     "prebuild": "rimraf -r build && mkdir -p build",
-    "build": "docker build -t poppler-layer . && CID=$(docker create poppler-layer:latest) && docker cp ${CID}:/opt build && cd build/opt && zip --symlinks -r artifacts.zip * && mv artifacts.zip ..",
+    "build": "docker build -t poppler-aws-lambda-layer . && CID=$(docker create poppler-aws-lambda-layer:latest) && docker cp ${CID}:/opt build && cd build/opt && zip --symlinks -r artifacts.zip * && mv artifacts.zip ..",
     "prerelease": "yarn build",
     "release": "sls deploy"
   },
