@@ -3,6 +3,9 @@
   "name": "poppler-aws-lambda-layer",
   "license": "GPL-2.0-or-later",
   "version": "1.0.0",
+  "engines": {
+    "npm": ">= 7.0.0"
+  },
   "description": "AWS Lambda layer to provide Poppler command line tools",
   "scripts": {
     "prebuild": "rimraf -r build && mkdir -p build",
