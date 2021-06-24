@@ -9,7 +9,7 @@ layers:
   poppler-layer:
     path: build
     name: poppler-aws-lambda-layer
-    description: Poppler v20.10.0
+    description: Poppler v21.06.1
     licenseInfo: GPL-2.0-or-later
     retain: true
     package:
