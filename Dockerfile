@@ -9,9 +9,9 @@ RUN mkdir -p $WORK_DIR
 WORKDIR $WORK_DIR
 
 # Curl
-ENV CURL_VERSION 7.73.0
+ENV CURL_VERSION 7.77.0
 ENV CURL_SOURCE curl-${CURL_VERSION}.tar.xz
-ENV CURL_MD5 d7df02d3b78b625fee4dd765808a6eb6
+ENV CURL_MD5 3cf78c539cae019cf96ba38571706e06
 
 RUN yum install -y openssl-devel && \
   curl -LO https://curl.haxx.se/download/${CURL_SOURCE} && \
@@ -22,6 +22,7 @@ RUN yum install -y openssl-devel && \
     CPPFLAGS=-I${TARGET_DIR}/include \
     LDFLAGS=-L$(TARGET_DIR)/lib \
     --enable-threaded-resolver \
+    --with-openssl \
     --disable-static \
     --disable-docs \
     --prefix=${TARGET_DIR} \
@@ -34,17 +35,17 @@ RUN yum install -y openssl-devel && \
   rm -rf curl*
 
 # CMake
-ENV CMAKE_VERSION 3.18.2
+ENV CMAKE_VERSION 3.20.1
 ENV CMAKE_SOURCE cmake-${CMAKE_VERSION}.tar.gz
-ENV CMAKE_MD5 7a882b3764f42981705286ac9daa29c2
+ENV CMAKE_MD5 b47fa0be657ae8715c695fd9ea979ce9
 
-RUN curl -LO https://cmake.org/files/v3.18/${CMAKE_SOURCE} && \
+RUN curl -LO https://cmake.org/files/v3.20/${CMAKE_SOURCE} && \
   (test "$(md5sum ${CMAKE_SOURCE})" = "${CMAKE_MD5}  ${CMAKE_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
   tar xf ${CMAKE_SOURCE} && \
   cd cmake* && \
   sed -i '/"lib64"/s/64//' Modules/GNUInstallDirs.cmake && \
   PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./bootstrap --prefix=${LOCAL_DIR} && \
-  make && \
+  make -j `nproc` && \
   make install && \
   cd .. && \
   rm -rf cmake*
@@ -104,9 +105,9 @@ RUN mkdir -p $FONTCONFIG_DIR && \
 
 
 # LCMS2
-ENV LCMS2_VERSION 2.11
+ENV LCMS2_VERSION 2.12
 ENV LCMS2_SOURCE lcms2-${LCMS2_VERSION}.tar.gz
-ENV LCMS2_MD5 598dae499e58f877ff6788254320f43e
+ENV LCMS2_MD5 8cb583c8447461896320b43ea9a688e0
 
 RUN curl -LO https://downloads.sourceforge.net/lcms/${LCMS2_SOURCE} && \
   (test "$(md5sum ${LCMS2_SOURCE})" = "${LCMS2_MD5}  ${LCMS2_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
@@ -140,9 +141,9 @@ RUN curl -LO https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/${NASM_S
   rm -rf nasm*
 
 # libjpeg-turbo
-ENV LIBJPEG_TURBO_VERSION 2.0.5
+ENV LIBJPEG_TURBO_VERSION 2.1.0
 ENV LIBJPEG_TURBO_SOURCE libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz
-ENV LIBJPEG_TURBO_MD5 3a7dc293918775fc933f81e2bce36464
+ENV LIBJPEG_TURBO_MD5 be306afc2d2ebd6931b634df0e8cbaf5
 
 RUN curl -LO https://downloads.sourceforge.net/libjpeg-turbo/${LIBJPEG_TURBO_SOURCE} && \
   (test "$(md5sum ${LIBJPEG_TURBO_SOURCE})" = "${LIBJPEG_TURBO_MD5}  ${LIBJPEG_TURBO_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
@@ -163,10 +164,12 @@ RUN curl -LO https://downloads.sourceforge.net/libjpeg-turbo/${LIBJPEG_TURBO_SOU
   rm -rf libjpeg*
 
 # OpenJPEG
-ENV OPENJP2_VERSION 2.3.1
+ENV OPENJP2_VERSION 2.4.0
 ENV OPENJP2_SOURCE openjp2-${OPENJP2_VERSION}.tar.gz
+ENV OPENJP2_MD5 4d388298335947367e91f1d100468af1
 
-RUN curl -L https://github.com/uclouvain/openjpeg/archive/v${OPENJP2_VERSION}.tar.gz -o ${OPENJP2_SOURCE} && \
+RUN curl -L https://github.com/uclouvain/openjpeg/archive/v${OPENJP2_VERSION}/openjpeg-${OPENJP2_VERSION}.tar.gz -o ${OPENJP2_SOURCE} && \
+  (test "$(md5sum ${OPENJP2_SOURCE})" = "${OPENJP2_MD5}  ${OPENJP2_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
   tar xf ${OPENJP2_SOURCE} && \
   cd openjpeg* && \
   mkdir -p build && \
@@ -206,10 +209,12 @@ RUN curl -LO http://prdownloads.sourceforge.net/libpng/${LIBPNG_SOURCE} && \
   rm -rf libpng*
 
 # libtiff
-ENV LIBTIFF_VERSION 4.1.0
+ENV LIBTIFF_VERSION 4.3.0
 ENV LIBTIFF_SOURCE tiff-${LIBTIFF_VERSION}.tar.gz
+ENV LIBTIFF_MD5 0a2e4744d1426a8fc8211c0cdbc3a1b3
 
 RUN curl -LO http://download.osgeo.org/libtiff/${LIBTIFF_SOURCE} && \
+  (test "$(md5sum ${LIBTIFF_SOURCE})" = "${LIBTIFF_MD5}  ${LIBTIFF_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
   tar xf ${LIBTIFF_SOURCE} && \
   cd tiff* && \
   PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
@@ -266,10 +271,11 @@ RUN curl -LO https://ftp.gnu.org/gnu/automake/${AUTOMAKE_SOURCE} && \
   rm -rf automake*
 
 # Cairo
-ENV CAIRO_VERSION "1.17.2+f93fc72c03e"
+ENV CAIRO_VERSION 1.17.4
 ENV CAIRO_SOURCE cairo-${CAIRO_VERSION}.tar.xz
-ENV CAIRO_MD5 23a9420780f74ad0ca1e9885e53ee022
-RUN curl -LO http://anduin.linuxfromscratch.org/BLFS/cairo/${CAIRO_SOURCE} && \
+ENV CAIRO_MD5 bf9d0d324ecbd350d0e9308125fa4ce0
+
+RUN curl -LO https://www.cairographics.org/snapshots/${CAIRO_SOURCE} && \
   (test "$(md5sum ${CAIRO_SOURCE})" = "${CAIRO_MD5}  ${CAIRO_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
   tar xf ${CAIRO_SOURCE} && \
   cd cairo* && \
@@ -288,9 +294,9 @@ RUN curl -LO http://anduin.linuxfromscratch.org/BLFS/cairo/${CAIRO_SOURCE} && \
   rm -rf cairo*
 
 # Poppler
-ENV POPPLER_VERSION 20.10.0
+ENV POPPLER_VERSION 21.06.1
 ENV POPPLER_SOURCE poppler-${POPPLER_VERSION}.tar.xz
-ENV POPPLER_MD5 1103acc31277936a138613c97b38b82c
+ENV POPPLER_MD5 dbad7032b680720ea6d570fd608b849e
 
 RUN curl -LO https://poppler.freedesktop.org/${POPPLER_SOURCE} && \
   (test "$(md5sum ${POPPLER_SOURCE})" = "${POPPLER_MD5}  ${POPPLER_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
@@ -305,9 +311,10 @@ RUN curl -LO https://poppler.freedesktop.org/${POPPLER_SOURCE} && \
     -DCMAKE_INSTALL_DOCDIR=${LOCAL_DIR}/doc/poppler \
     -DTESTDATADIR=testdata \
     -DENABLE_UNSTABLE_API_ABI_HEADERS:bool=on \
+    -DENABLE_BOOST=off \
     -DENABLE_QT5:bool=off \
     -DENABLE_QT6:bool=off && \
-  make && \
+  make -j `nproc` && \
   make install && \
   cd ../.. && \
   rm -rf poppler*
