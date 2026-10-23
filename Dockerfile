@@ -1,71 +1,63 @@
-FROM lambci/lambda-base-2:build
+FROM --platform=linux/amd64 amazonlinux:2023
 
-ENV WORK_DIR /usr/local/work
-ENV TARGET_DIR /opt
-ENV LOCAL_DIR /usr/local
+ENV WORK_DIR=/usr/local/work
+ENV TARGET_DIR=/opt
+ENV LOCAL_DIR=/usr/local
+
+# Poppler requires C++23, which the default GCC 11 does not support
+ENV CC=gcc14-gcc
+ENV CXX=gcc14-g++
+
+RUN dnf install -y \
+    gcc14 \
+    gcc14-c++ \
+    make \
+    tar \
+    xz \
+    gzip \
+    findutils \
+    pkgconf-pkg-config \
+    gperf \
+    expat-devel \
+    libjpeg-turbo-devel \
+    libpng-devel \
+    openjpeg2-devel \
+    lcms2-devel \
+    zlib-devel \
+    brotli-devel && \
+  dnf clean all
 
 RUN mkdir -p $WORK_DIR
 
 WORKDIR $WORK_DIR
 
-# Curl
-ENV CURL_VERSION 7.77.0
-ENV CURL_SOURCE curl-${CURL_VERSION}.tar.xz
-ENV CURL_MD5 3cf78c539cae019cf96ba38571706e06
+# CMake (Poppler requires 3.28 or later, but Amazon Linux 2023 provides 3.22)
+ENV CMAKE_VERSION=3.31.12
+ENV CMAKE_SOURCE=cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz
+ENV CMAKE_SHA256=0dc2e9a6860f06bf10bd8fadc03e35d9eeb4df46e33763a7e480e987758f385c
 
-RUN yum install -y openssl-devel && \
-  curl -LO https://curl.haxx.se/download/${CURL_SOURCE} && \
-  (test "$(md5sum ${CURL_SOURCE})" = "${CURL_MD5}  ${CURL_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${CURL_SOURCE} && \
-  cd curl* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --enable-threaded-resolver \
-    --with-openssl \
-    --disable-static \
-    --disable-docs \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf curl*
-
-# CMake
-ENV CMAKE_VERSION 3.20.1
-ENV CMAKE_SOURCE cmake-${CMAKE_VERSION}.tar.gz
-ENV CMAKE_MD5 b47fa0be657ae8715c695fd9ea979ce9
-
-RUN curl -LO https://cmake.org/files/v3.20/${CMAKE_SOURCE} && \
-  (test "$(md5sum ${CMAKE_SOURCE})" = "${CMAKE_MD5}  ${CMAKE_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${CMAKE_SOURCE} && \
-  cd cmake* && \
-  sed -i '/"lib64"/s/64//' Modules/GNUInstallDirs.cmake && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./bootstrap --prefix=${LOCAL_DIR} && \
-  make -j `nproc` && \
-  make install && \
-  cd .. && \
-  rm -rf cmake*
+RUN curl -fLO https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${CMAKE_SOURCE} && \
+  echo "${CMAKE_SHA256}  ${CMAKE_SOURCE}" | sha256sum -c - && \
+  tar xf ${CMAKE_SOURCE} -C ${LOCAL_DIR} --strip-components=1 && \
+  rm -f ${CMAKE_SOURCE}
 
 # FreeType 2
-ENV FREETYPE2_VERSION 2.10.4
-ENV FREETYPE2_SOURCE freetype-${FREETYPE2_VERSION}.tar.xz
-ENV FREETYPE2_MD5 0e6c0e9b218be3ba3e26e1d23b1c80dd
+# Built without HarfBuzz, because the one of Amazon Linux 2023 pulls HarfBuzz, GLib and Graphite2 into the layer.
+ENV FREETYPE2_VERSION=2.15.0
+ENV FREETYPE2_SOURCE=freetype-${FREETYPE2_VERSION}.tar.xz
+ENV FREETYPE2_SHA256=93cd47eb719c325107f2d3cf087d06299e944c3b48a40b55537302304dea1dd5
 
-RUN curl -LO  https://downloads.sourceforge.net/freetype/${FREETYPE2_SOURCE} && \
-  (test "$(md5sum ${FREETYPE2_SOURCE})" = "${FREETYPE2_MD5}  ${FREETYPE2_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
+RUN curl -fLO https://download.savannah.gnu.org/releases/freetype/${FREETYPE2_SOURCE} && \
+  echo "${FREETYPE2_SHA256}  ${FREETYPE2_SOURCE}" | sha256sum -c - && \
   tar xf ${FREETYPE2_SOURCE} && \
-  cd freetype* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --enable-freetype-config \
-    --with-sysroot=${TARGET_DIR} \
+  cd freetype-${FREETYPE2_VERSION} && \
+  ./configure \
+    --with-zlib \
+    --with-png \
+    --without-bzip2 \
+    --without-brotli \
+    --without-harfbuzz \
     --disable-static \
-    --disable-docs \
     --prefix=${TARGET_DIR} \
     --exec-prefix=${LOCAL_DIR} \
     --libdir=${TARGET_DIR}/lib \
@@ -75,21 +67,18 @@ RUN curl -LO  https://downloads.sourceforge.net/freetype/${FREETYPE2_SOURCE} && 
   cd .. && \
   rm -rf freetype*
 
-# Fontconfig
-ENV FONTCONFIG_DIR $TARGET_DIR/fontconfig
-ENV FONTCONFIG_VERSION 2.13.91
-ENV FONTCONFIG_SOURCE fontconfig-${FONTCONFIG_VERSION}.tar.xz
-ENV FONTCONFIG_MD5 f235f55d31d3b5daff69ee090f01b5d4
+# Fontconfig (Poppler requires 2.15 or later, but Amazon Linux 2023 provides 2.13)
+ENV FONTCONFIG_DIR=$TARGET_DIR/fontconfig
+ENV FONTCONFIG_VERSION=2.18.3
+ENV FONTCONFIG_SOURCE=fontconfig-${FONTCONFIG_VERSION}.tar.xz
+ENV FONTCONFIG_SHA256=4f7b554a38cdf78c033f666c8871f3749e14a094f65a07f630c91ed0b43d35e3
 
 RUN mkdir -p $FONTCONFIG_DIR && \
-  yum install -y gperf libuuid-devel expat-devel && \
-  curl -LO https://www.freedesktop.org/software/fontconfig/release/${FONTCONFIG_SOURCE} && \
-  (test "$(md5sum ${FONTCONFIG_SOURCE})" = "${FONTCONFIG_MD5}  ${FONTCONFIG_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
+  curl -fLO https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/${FONTCONFIG_VERSION}/${FONTCONFIG_SOURCE} && \
+  echo "${FONTCONFIG_SHA256}  ${FONTCONFIG_SOURCE}" | sha256sum -c - && \
   tar xf ${FONTCONFIG_SOURCE} && \
-  cd fontconfig* && \
+  cd fontconfig-${FONTCONFIG_VERSION} && \
   PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
     --sysconfdir=${FONTCONFIG_DIR}/etc \
     --localstatedir=${FONTCONFIG_DIR}/var \
     --disable-static \
@@ -103,223 +92,49 @@ RUN mkdir -p $FONTCONFIG_DIR && \
   cd .. && \
   rm -rf fontconfig*
 
-
-# LCMS2
-ENV LCMS2_VERSION 2.12
-ENV LCMS2_SOURCE lcms2-${LCMS2_VERSION}.tar.gz
-ENV LCMS2_MD5 8cb583c8447461896320b43ea9a688e0
-
-RUN curl -LO https://downloads.sourceforge.net/lcms/${LCMS2_SOURCE} && \
-  (test "$(md5sum ${LCMS2_SOURCE})" = "${LCMS2_MD5}  ${LCMS2_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${LCMS2_SOURCE} && \
-  cd lcms2* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --disable-static \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf lcms2*
-
-# NASM (for libjpeg-turbo)
-ENV NASM_VERSION 2.15.05
-ENV NASM_SOURCE nasm-${NASM_VERSION}.tar.gz
-
-RUN curl -LO https://www.nasm.us/pub/nasm/releasebuilds/${NASM_VERSION}/${NASM_SOURCE} && \
-  tar xf ${NASM_SOURCE} && \
-  cd nasm* && \
-  ./autogen.sh && \
-  ./configure --prefix=${LOCAL_DIR} && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf nasm*
-
-# libjpeg-turbo
-ENV LIBJPEG_TURBO_VERSION 2.1.0
-ENV LIBJPEG_TURBO_SOURCE libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz
-ENV LIBJPEG_TURBO_MD5 be306afc2d2ebd6931b634df0e8cbaf5
-
-RUN curl -LO https://downloads.sourceforge.net/libjpeg-turbo/${LIBJPEG_TURBO_SOURCE} && \
-  (test "$(md5sum ${LIBJPEG_TURBO_SOURCE})" = "${LIBJPEG_TURBO_MD5}  ${LIBJPEG_TURBO_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${LIBJPEG_TURBO_SOURCE} && \
-  cd libjpeg* && \
-  mkdir -p build && \
-  cd build && \
-  cmake .. \
-    -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_LIBDIR:PATH=lib \
-    -DCMAKE_INSTALL_BINDIR:PATH=${LOCAL_DIR}/bin \
-    -DCMAKE_INSTALL_DOCDIR:PATH=${LOCAL_DIR}/share/doc/libjpeg-turbo \
-    -DENABLE_STATIC=false && \
-  make && \
-  make install && \
-  cd ../.. && \
-  rm -rf libjpeg*
-
-# OpenJPEG
-ENV OPENJP2_VERSION 2.4.0
-ENV OPENJP2_SOURCE openjp2-${OPENJP2_VERSION}.tar.gz
-ENV OPENJP2_MD5 4d388298335947367e91f1d100468af1
-
-RUN curl -L https://github.com/uclouvain/openjpeg/archive/v${OPENJP2_VERSION}/openjpeg-${OPENJP2_VERSION}.tar.gz -o ${OPENJP2_SOURCE} && \
-  (test "$(md5sum ${OPENJP2_SOURCE})" = "${OPENJP2_MD5}  ${OPENJP2_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${OPENJP2_SOURCE} && \
-  cd openjpeg* && \
-  mkdir -p build && \
-  cd build && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig cmake .. \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-    -DCMAKE_INSTALL_BINDIR:PATH=${LOCALDIR}/bin \
-    -DCMAKE_INSTALL_DOCDIR:PATH=${LOCALDIR}/share/doc/openjpeg2 \
-    -DBUILD_STATIC_LIBS:bool=off && \
-  make clean && \
-  make install && \
-  cd ../.. && \
-  rm -rf openjpeg*
-
-# libpng
-ENV LIBPNG_VERSION 1.6.37
-ENV LIBPNG_SOURCE libpng-${LIBPNG_VERSION}.tar.xz
-ENV LIBPNG_MD5 015e8e15db1eecde5f2eb9eb5b6e59e9
-
-RUN curl -LO http://prdownloads.sourceforge.net/libpng/${LIBPNG_SOURCE} && \
-  (test "$(md5sum ${LIBPNG_SOURCE})" = "${LIBPNG_MD5}  ${LIBPNG_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${LIBPNG_SOURCE} && \
-  cd libpng* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --disable-dependency-tracking \
-    --disable-static \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf libpng*
-
-# libtiff
-ENV LIBTIFF_VERSION 4.3.0
-ENV LIBTIFF_SOURCE tiff-${LIBTIFF_VERSION}.tar.gz
-ENV LIBTIFF_MD5 0a2e4744d1426a8fc8211c0cdbc3a1b3
-
-RUN curl -LO http://download.osgeo.org/libtiff/${LIBTIFF_SOURCE} && \
-  (test "$(md5sum ${LIBTIFF_SOURCE})" = "${LIBTIFF_MD5}  ${LIBTIFF_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${LIBTIFF_SOURCE} && \
-  cd tiff* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --with-docdir=/usr/local/share/doc/tiff \
-    --disable-dependency-tracking \
-    --disable-static \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf tiff*
-
-# Pixman
-ENV PIXMAN_VERSION 0.40.0
-ENV PIXMAN_SOURCE pixman-0.40.0.tar.gz
-ENV PIXMAN_MD5 73858c0862dd9896fb5f62ae267084a4
-
-RUN curl -LO https://www.cairographics.org/releases/${PIXMAN_SOURCE} && \
-  (test "$(md5sum ${PIXMAN_SOURCE})" = "${PIXMAN_MD5}  ${PIXMAN_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${PIXMAN_SOURCE} && \
-  cd pixman* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --disable-static \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf pixman*
-
-# Automake (for Cairo)
-ENV AUTOMAKE_VERSION 1.16.1
-ENV AUTOMAKE_SOURCE automake-${AUTOMAKE_VERSION}.tar.gz
-ENV AUTOMAKE_MD5 83cc2463a4080efd46a72ba2c9f6b8f5
-
-RUN curl -LO https://ftp.gnu.org/gnu/automake/${AUTOMAKE_SOURCE} && \
-  md5sum ${AUTOMAKE_SOURCE} && \
-  (test "$(md5sum ${AUTOMAKE_SOURCE})" = "${AUTOMAKE_MD5}  ${AUTOMAKE_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${AUTOMAKE_SOURCE} && \
-  cd automake* && \
-  ./configure --prefix=${LOCAL_DIR} && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf automake*
-
-# Cairo
-ENV CAIRO_VERSION 1.17.4
-ENV CAIRO_SOURCE cairo-${CAIRO_VERSION}.tar.xz
-ENV CAIRO_MD5 bf9d0d324ecbd350d0e9308125fa4ce0
-
-RUN curl -LO https://www.cairographics.org/snapshots/${CAIRO_SOURCE} && \
-  (test "$(md5sum ${CAIRO_SOURCE})" = "${CAIRO_MD5}  ${CAIRO_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
-  tar xf ${CAIRO_SOURCE} && \
-  cd cairo* && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig ./configure \
-    CPPFLAGS=-I${TARGET_DIR}/include \
-    LDFLAGS=-L$(TARGET_DIR)/lib \
-    --disable-static \
-    --enable-tee \
-    --prefix=${TARGET_DIR} \
-    --exec-prefix=${LOCAL_DIR} \
-    --libdir=${TARGET_DIR}/lib \
-    --mandir=${LOCAL_DIR}/share/man && \
-  make && \
-  make install && \
-  cd .. && \
-  rm -rf cairo*
-
 # Poppler
-ENV POPPLER_VERSION 21.06.1
-ENV POPPLER_SOURCE poppler-${POPPLER_VERSION}.tar.xz
-ENV POPPLER_MD5 dbad7032b680720ea6d570fd608b849e
+# libcurl, NSS and GPGME are disabled so that the layer does not depend on OpenSSL.
+ENV POPPLER_VERSION=26.10.0
+ENV POPPLER_SOURCE=poppler-${POPPLER_VERSION}.tar.xz
+ENV POPPLER_SHA256=6792cb7c69205007ad87d2e936cecc5b3a31fac29ab54ffc3175fdb6b2a6ce35
 
-RUN curl -LO https://poppler.freedesktop.org/${POPPLER_SOURCE} && \
-  (test "$(md5sum ${POPPLER_SOURCE})" = "${POPPLER_MD5}  ${POPPLER_SOURCE}" || { echo 'Checksum Failed'; exit 1; }) && \
+RUN curl -fLO https://poppler.freedesktop.org/${POPPLER_SOURCE} && \
+  echo "${POPPLER_SHA256}  ${POPPLER_SOURCE}" | sha256sum -c - && \
   tar xf ${POPPLER_SOURCE} && \
-  cd poppler* && \
-  git clone git://git.freedesktop.org/git/poppler/test testdata && \
-  mkdir build && \
-  cd build && \
-  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig:$PKG_CONFIG_PATH cmake .. \
+  cd poppler-${POPPLER_VERSION} && \
+  PKG_CONFIG_PATH=${TARGET_DIR}/lib/pkgconfig cmake -S . -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=${TARGET_DIR} \
-    -DCMAKE_INSTALL_DOCDIR=${LOCAL_DIR}/doc/poppler \
-    -DTESTDATADIR=testdata \
-    -DENABLE_UNSTABLE_API_ABI_HEADERS:bool=on \
-    -DENABLE_BOOST=off \
-    -DENABLE_QT5:bool=off \
-    -DENABLE_QT6:bool=off && \
-  make -j `nproc` && \
-  make install && \
-  cd ../.. && \
+    -DCMAKE_INSTALL_LIBDIR=lib \
+    -DCMAKE_INSTALL_MANDIR=${LOCAL_DIR}/share/man \
+    -DCMAKE_DISABLE_FIND_PACKAGE_Cairo=ON \
+    -DENABLE_LIBCURL=OFF \
+    -DENABLE_NSS3=OFF \
+    -DENABLE_GPGME=OFF \
+    -DENABLE_LIBTIFF=OFF \
+    -DENABLE_BOOST=OFF \
+    -DENABLE_HARFBUZZ=OFF \
+    -DENABLE_GLIB=OFF \
+    -DENABLE_GOBJECT_INTROSPECTION=OFF \
+    -DENABLE_QT5=OFF \
+    -DENABLE_QT6=OFF \
+    -DBUILD_CPP_TESTS=OFF \
+    -DBUILD_MANUAL_TESTS=OFF && \
+  cmake --build build -j `nproc` && \
+  cmake --install build && \
+  cd .. && \
   rm -rf poppler*
 
-# Copy required shared objects which do not exist on AWS Lambda
-RUN cp /lib64/libexpat.so* /opt/lib
+# Copy required shared objects which do not exist on AWS Lambda (nodejs24.x)
+RUN for lib in \
+    libbrotlicommon.so.1 \
+    libbrotlidec.so.1 \
+    libexpat.so.1 \
+    libjpeg.so.62 \
+    liblcms2.so.2 \
+    libopenjp2.so.7 \
+    libpng16.so.16; do \
+    cp -P /usr/lib64/${lib} $(readlink -f /usr/lib64/${lib}) ${TARGET_DIR}/lib; \
+  done
 
-CMD ["/opt/poppler/bin/pdfinfo"]
+CMD ["/opt/bin/pdfinfo"]
