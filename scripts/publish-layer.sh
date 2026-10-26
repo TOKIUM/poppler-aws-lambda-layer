@@ -53,7 +53,7 @@ description="Poppler v${version}"
 
 echo "Publishing ${LAYER_NAME} (${description}) to account ${account} in ${AWS_REGION}..."
 
-read -r published_version layer_arn < <(
+published=$(
   aws lambda publish-layer-version \
     --layer-name "$LAYER_NAME" \
     --description "$description" \
@@ -63,6 +63,7 @@ read -r published_version layer_arn < <(
     --query '[Version, LayerVersionArn]' \
     --output text
 )
+read -r published_version layer_arn <<< "$published"
 
 echo "Published ${layer_arn}"
 echo "Published version: ${published_version}"
