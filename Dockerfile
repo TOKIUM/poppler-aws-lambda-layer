@@ -8,7 +8,13 @@ ENV LOCAL_DIR=/usr/local
 ENV CC=gcc14-gcc
 ENV CXX=gcc14-g++
 
-RUN dnf install -y \
+# The amazonlinux:2023 image locks dnf to the release it was built from (2023.12.20261021),
+# which has the vulnerable libbrotli 1.1.0-1.amzn2023.0.1 (CVE-2026-111497).
+# Use the release with the fix (ALAS2023-2026-3334). The libraries below are copied into the layer.
+# The build stops if the fixed libbrotli is not installed.
+ENV AL2023_RELEASEVER=2023.12.20261026
+
+RUN dnf install -y --releasever ${AL2023_RELEASEVER} \
     gcc14 \
     gcc14-c++ \
     make \
@@ -25,7 +31,8 @@ RUN dnf install -y \
     lcms2-devel \
     zlib-devel \
     brotli-devel && \
-  dnf clean all
+  dnf clean all && \
+  test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' libbrotli)" = "1.1.0-1.amzn2023.0.2"
 
 RUN mkdir -p $WORK_DIR
 
